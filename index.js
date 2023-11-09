@@ -1,13 +1,21 @@
 const express = require('express');
+const app = express();
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express();
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser')
 const port = process.env.PORT || 5000;
 
 
 // Middleware's
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://serenity-haven-4f5df.web.app'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 
@@ -22,6 +30,21 @@ const client = new MongoClient(uri, {
   }
 });
 
+// Custom Middlewares
+const gateman = async (req, res, next) => {
+  const token = req.cookies?.token;
+  if (!token) {
+    return res.status(401).send({ message: 'Unauthorized' })
+  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (error, decoded) => {
+    if (error) {
+      return res.status(401).send({ message: 'Unauthorized' })
+    }
+    req.user = decoded;
+    next();
+  })
+}
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -29,6 +52,30 @@ async function run() {
 
     const roomsCollection = client.db("SerenityHavenDB").collection("rooms");
 
+    // Jwt token api's
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      console.log(user)
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+      res
+        .cookie('token', token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production" ? true : false,
+          sameSite: process.env.NODE_ENV === "production" ? 'none' : "strict"
+        })
+        .send({ Success: true });
+    })
+
+    app.post('/logout', async(req, res)=>{
+      const user = req.body;
+      res.clearCookie('token', {
+        maxAge: 0,
+        secure: process.env.NODE_ENV === "production" ? true : false,
+        sameSite: process.env.NODE_ENV === "production" ?"none": "strict",
+      }).send({Success: true});
+    })
+
+    // Rooms data Api's
     app.get("/rooms", async(req, res)=>{
         const cursor = roomsCollection.find();
         const result = await cursor.toArray();
