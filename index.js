@@ -17,6 +17,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.idotoa5.mongodb.net/?retryWrites=true&w=majority`;
@@ -33,6 +34,7 @@ const client = new MongoClient(uri, {
 // Custom Middlewares
 const gateman = async (req, res, next) => {
   const token = req.cookies?.token;
+  // console.log("Token From Gateman: ", token)
   if (!token) {
     return res.status(401).send({ message: 'Unauthorized' })
   }
@@ -51,6 +53,9 @@ async function run() {
     await client.connect();
 
     const roomsCollection = client.db("SerenityHavenDB").collection("rooms");
+    const reviewsCollection = client.db("SerenityHavenDB").collection("reviews");
+    const bookingsCollection = client.db("SerenityHavenDB").collection("bookings");
+
 
     // Jwt token api's
     app.post('/jwt', async (req, res) => {
@@ -75,6 +80,13 @@ async function run() {
       }).send({Success: true});
     })
 
+    // Rooms Api's
+    app.post('/reviews', async(req, res)=>{
+      const data = req.body;
+      const result = await reviewsCollection.insertOne(data)
+      res.send(result);
+    })
+
     // Rooms data Api's
     app.get("/rooms", async(req, res)=>{
         const cursor = roomsCollection.find();
@@ -85,6 +97,60 @@ async function run() {
       const id = req.params.id;
       const query = {_id: new ObjectId(id)};
       const result = await roomsCollection.findOne(query);
+      res.send(result);
+    })
+
+    app.patch('/rooms/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedData = req.body;
+      const updateDoc = {
+        $set: {
+          quantity: updatedData.updatedQuantity
+        }
+      };
+      const result = await roomsCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    })
+
+    // booking's api's
+    app.get('/bookings', gateman, async (req, res) => {
+      if(req.query.email !== req.user.email){
+        return res.status(403).send({message: "Forbidden"})
+      }
+
+      let queryObj = {};
+      if (req.query) {
+        queryObj.email = req.query.email;
+      }
+      const cursor = bookingsCollection.find(queryObj?.email && queryObj);
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    app.post('/bookings', async (req, res) => {
+      const info = req.body;
+      const result = await bookingsCollection.insertOne(info);
+      res.send(result);
+    })
+
+    app.patch('/bookings/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedBooking = req.body;
+      const updateDoc = {
+        $set: {
+          status: updatedBooking.status
+        }
+      };
+      const result = await bookingsCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    })
+
+    app.delete('/bookings/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookingsCollection.deleteOne(query);
       res.send(result);
     })
 
