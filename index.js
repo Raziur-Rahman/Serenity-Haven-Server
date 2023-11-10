@@ -34,13 +34,12 @@ const client = new MongoClient(uri, {
 // Custom Middlewares
 const gateman = async (req, res, next) => {
   const token = req.cookies?.token;
-  // console.log("Token From Gateman: ", token)
   if (!token) {
     return res.status(401).send({ message: 'Unauthorized' })
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (error, decoded) => {
     if (error) {
-      return res.status(401).send({ message: 'Unauthorized' })
+      return res.status(401).send({ message: 'NOt verified' })
     }
     req.user = decoded;
     next();
@@ -60,7 +59,6 @@ async function run() {
     // Jwt token api's
     app.post('/jwt', async (req, res) => {
       const user = req.body;
-      console.log(user)
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
       res
         .cookie('token', token, {
@@ -71,31 +69,33 @@ async function run() {
         .send({ Success: true });
     })
 
-    app.post('/logout', async(req, res)=>{
+    app.post('/logout', async (req, res) => {
       const user = req.body;
       res.clearCookie('token', {
         maxAge: 0,
         secure: process.env.NODE_ENV === "production" ? true : false,
-        sameSite: process.env.NODE_ENV === "production" ?"none": "strict",
-      }).send({Success: true});
-    })
-
-    // Rooms Api's
-    app.post('/reviews', async(req, res)=>{
-      const data = req.body;
-      const result = await reviewsCollection.insertOne(data)
-      res.send(result);
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      }).send({ Success: true });
     })
 
     // Rooms data Api's
-    app.get("/rooms", async(req, res)=>{
-        const cursor = roomsCollection.find();
-        const result = await cursor.toArray();
-        res.send(result);
+    app.get("/rooms", async (req, res) => {
+      const sorting = req.query;
+      const query = {}
+
+      const options = {
+          sort: {
+            "price_per_night": sorting?.sort === "asc" ? 1 : -1
+          } 
+      }
+      
+      const cursor = roomsCollection.find( query, options );
+      const result = await cursor.toArray();
+      res.send(result);
     })
-    app.get("/rooms/:id", async(req, res)=>{
+    app.get("/rooms/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const result = await roomsCollection.findOne(query);
       res.send(result);
     })
@@ -104,21 +104,31 @@ async function run() {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updatedData = req.body;
-      const updateDoc = {
-        $set: {
-          quantity: updatedData.updatedQuantity
+      let updateDoc = {};
+      if (Array.isArray(updatedData)) {
+        updateDoc = {
+          $set: {
+            reviews: updatedData
+          }
+        }
+      }
+      else {
+        updateDoc = {
+          $set: {
+            quantity: updatedData.Quantity
+          }
         }
       };
+      console.log(updateDoc);
       const result = await roomsCollection.updateOne(filter, updateDoc);
       res.send(result);
     })
 
     // booking's api's
     app.get('/bookings', gateman, async (req, res) => {
-      if(req.query.email !== req.user.email){
-        return res.status(403).send({message: "Forbidden"})
+      if (req.query.email !== req.user.email) {
+        return res.status(403).send({ message: "Forbidden" })
       }
-
       let queryObj = {};
       if (req.query) {
         queryObj.email = req.query.email;
@@ -127,6 +137,7 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     })
+
 
     app.post('/bookings', async (req, res) => {
       const info = req.body;
@@ -140,7 +151,7 @@ async function run() {
       const updatedBooking = req.body;
       const updateDoc = {
         $set: {
-          status: updatedBooking.status
+          reservetionDate: updatedBooking.reservetionDate
         }
       };
       const result = await bookingsCollection.updateOne(filter, updateDoc);
@@ -165,10 +176,10 @@ async function run() {
 run().catch(console.dir);
 
 
-app.get('/', (req, res)=>{
-    res.send("Serenity Haven Server is Running");
+app.get('/', (req, res) => {
+  res.send("Serenity Haven Server is Running");
 })
 
-app.listen(port, ()=>{
-    console.log(`Serenity Server is runnig on port: ${port}`);
+app.listen(port, () => {
+  console.log(`Serenity Server is runnig on port: ${port}`);
 })
